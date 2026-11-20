@@ -1,0 +1,2 @@
+# Only needed when AUDIO_ENABLED=true with AUDIO_SOURCE=loopback (Windows).
+PyAudioWPatch>=0.2.12

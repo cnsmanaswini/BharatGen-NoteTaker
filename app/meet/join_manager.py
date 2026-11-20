@@ -20,8 +20,16 @@ JOIN_BUTTON = re.compile(r"^(ask to join|join now)\b", re.I)
 # Best-guess wording for a rejected request; verify against a real denial.
 DENIED_TEXT = re.compile(r"denied your request|can't join this (video )?call|removed you", re.I)
 
+StateCallback = Callable[[MeetingState, str], None]
 
-def join_meeting(page: Page, settings: Settings, is_alive: Callable[[], bool]) -> MeetingState:
+
+def _notify(on_state: StateCallback | None, state: MeetingState, reason: str) -> None:
+    if on_state is not None:
+        on_state(state, reason)
+
+
+def join_meeting(page: Page, settings: Settings, is_alive: Callable[[], bool],
+                 on_state: StateCallback | None = None) -> MeetingState:
     join_button = page.get_by_role("button", name=JOIN_BUTTON).first
     try:
         join_button.wait_for(state="visible", timeout=settings.default_timeout_ms)
@@ -33,10 +41,12 @@ def join_meeting(page: Page, settings: Settings, is_alive: Callable[[], bool]) -
     label = join_button.inner_text().strip()
     log.info("Pre-join screen ready; button: '%s'", label)
     ensure_devices_off(page)
+    _notify(on_state, MeetingState.JOIN_REQUESTED, f"clicked '{label}'")
     join_button.click()
 
     if "ask" in label.lower():
         log.info("Admission requested; waiting for the host (up to %ss)", settings.admission_timeout_s)
+        _notify(on_state, MeetingState.WAITING_ADMISSION, "waiting for the host")
         return _wait_for_entry(page, settings.admission_timeout_s, is_alive)
     return _wait_for_entry(page, settings.default_timeout_ms // 1000, is_alive)
 

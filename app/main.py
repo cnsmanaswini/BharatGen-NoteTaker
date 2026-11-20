@@ -1,24 +1,18 @@
-"""Entry point: python -m app.main [MEET_URL]"""
+"""Entry point: python -m app.main [MEET_URL]
+
+Single-meeting CLI. The concurrent orchestrator is `python -m app.orchestration`.
+"""
 import argparse
-import re
 import sys
 
-from playwright.sync_api import Error as PWError
-
-from app.browser.auth_manager import AuthManager
-from app.browser.chromium_manager import ChromiumManager
 from app.config.settings import Settings
-from app.meet.join_manager import join_meeting
-from app.meet.meet_navigator import dismiss_media_prompt, open_meeting
-from app.meet.meeting_state import MeetingState
-from app.meet.participant_monitor import confirm_presence, monitor_meeting
-from app.session.cleanup_manager import CleanupManager
-from app.session.session_manager import EXIT_USAGE, SessionManager
+from app.orchestration.session import MEETING_URL_RE, WorkerConfig
+from app.orchestration.worker import run_session
+from app.session.session_manager import EXIT_USAGE, make_session_id
 from app.utils.logger import get_logger, setup_logging
-from app.utils.snapshot import save_snapshot
 
 MEET_HOME = "https://meet.google.com/"
-MEET_URL_RE = re.compile(r"^https://meet\.google\.com/[a-z0-9\-]+(\?.*)?$", re.I)
+MEET_URL_RE = MEETING_URL_RE
 
 log = get_logger("main")
 
@@ -39,63 +33,20 @@ def main(argv=None) -> int:
         log.error("Not a valid Google Meet URL: %s", args.meet_url)
         return EXIT_USAGE
 
-    session = SessionManager()
-    browser = ChromiumManager(settings)
-    cleanup = CleanupManager(browser)
-    try:
-        page = browser.start()
-        if not AuthManager(browser, settings.auth_wait_timeout_s).ensure_authenticated():
-            session.transition(MeetingState.FAILED, "sign-in did not complete")
-            return session.exit_code()
-
-        if not args.meet_url:
-            page.goto(MEET_HOME, wait_until="domcontentloaded")
-            log.info("Meet home opened. Press Ctrl+C or close the window to exit.")
-            while browser.is_alive():
-                page.wait_for_timeout(1000)
-            return 0
-
-        open_meeting(page, args.meet_url)
-        dismiss_media_prompt(page)
-        session.transition(MeetingState.PREJOIN, "meeting page opened")
-
-        state = join_meeting(page, settings, browser.is_alive)
-        session.transition(state, "join finished")
-        if state != MeetingState.IN_MEETING:
-            return session.exit_code()
-
-        save_snapshot(page, "in_meeting")
-        confirm_presence(page, settings.bot_display_name)
-        log.info("Bot is in the meeting. Press Ctrl+C to leave.")
-
-        end_state, reason = monitor_meeting(page, session, settings, browser.is_alive)
-        if browser.crashed:
-            end_state, reason = MeetingState.CRASHED, "browser page crashed"
-        elif end_state != MeetingState.ENDED or reason != "browser closed":
-            if browser.is_alive():
-                save_snapshot(page, "session_end")  # shows what Meet displayed at the end
-        session.transition(end_state, reason)
-        return session.exit_code()
-    except KeyboardInterrupt:
-        session.transition(MeetingState.ENDED, "stopped by user (Ctrl+C)")
-        return session.exit_code()
-    except PWError as exc:
-        if browser.crashed:
-            session.transition(MeetingState.CRASHED, "browser page crashed")
-        elif not browser.is_alive():
-            session.transition(MeetingState.ENDED, "browser closed")
-        else:
-            log.exception("Browser automation error")
-            session.transition(MeetingState.FAILED, str(exc).splitlines()[0])
-        return session.exit_code()
-    except Exception as exc:
-        log.exception("Unexpected failure")
-        session.transition(MeetingState.FAILED, str(exc))
-        return session.exit_code()
-    finally:
-        cleanup.run()
-        log.info("Final state: %s%s", session.state.value,
-                 f" ({session.reason})" if session.reason else "")
+    session_key = make_session_id(args.meet_url) if args.meet_url else "meet-home"
+    run_dir = settings.log_dir / "sessions" / session_key
+    # Single-meeting mode keeps using the authenticated browser_profile directly;
+    # per-session profile clones are only needed when browsers run concurrently.
+    config = WorkerConfig(
+        meeting_id=session_key,
+        meeting_url=args.meet_url,
+        profile_dir=str(settings.user_data_dir),
+        log_file=str(settings.log_dir / "meetbot.log"),
+        state_file=str(run_dir / "state.json"),
+        stop_file=str(run_dir / "stop.request"),
+        events_file=str(run_dir / "events.jsonl"),
+    )
+    return run_session(config, settings)
 
 
 if __name__ == "__main__":

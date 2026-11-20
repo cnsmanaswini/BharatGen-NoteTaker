@@ -5,6 +5,7 @@ from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PWTimeout
 
 from app.utils.logger import get_logger
+from app.utils.redact import redact_meeting_url
 
 log = get_logger(__name__)
 
@@ -13,7 +14,7 @@ DEVICE_OFF_BUTTONS = ("Turn off microphone", "Turn off camera")
 
 
 def open_meeting(page: Page, url: str) -> None:
-    log.info("Opening meeting %s", url)
+    log.info("Opening meeting %s", redact_meeting_url(url))
     page.goto(url, wait_until="domcontentloaded")
 
 

@@ -12,6 +12,13 @@ def _bool(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _float(value: str, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 @dataclass(frozen=True)
 class Settings:
     browser_channel: str
@@ -41,6 +48,24 @@ class Settings:
     profile_source: Path
     profile_clone: bool
     allow_duplicate_meetings: bool
+    # ASR (off by default; never blocks audio capture)
+    asr_enabled: bool
+    asr_output_dir: Path
+    asr_queue_max: int
+    asr_use_silero: bool
+    asr_vad_threshold: float
+    asr_vad_min_silence_ms: int
+    asr_target_segment_ms: int
+    asr_cut_silence_ms: int
+    asr_force_cut_silence_ms: int
+    asr_min_speech_ms: int
+    asr_overlap_ms: int
+    mancha_asr_url: str
+    mancha_asr_api_key: str
+    mancha_asr_model: str
+    mancha_asr_language: str
+    mancha_asr_timeout_s: float
+    mancha_asr_retries: int
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -75,4 +100,21 @@ class Settings:
             profile_source=Path(os.getenv("PROFILE_SOURCE", "./browser_profile")).resolve(),
             profile_clone=_bool(os.getenv("PROFILE_CLONE", "true")),
             allow_duplicate_meetings=_bool(os.getenv("ALLOW_DUPLICATE_MEETINGS", "false")),
+            asr_enabled=_bool(os.getenv("ASR_ENABLED", "false")),
+            asr_output_dir=Path(os.getenv("ASR_OUTPUT_DIR", "./transcripts")).resolve(),
+            asr_queue_max=int(os.getenv("ASR_QUEUE_MAX", "300")),
+            asr_use_silero=_bool(os.getenv("ASR_USE_SILERO", "true")),
+            asr_vad_threshold=_float(os.getenv("ASR_VAD_THRESHOLD", "0.5"), 0.5),
+            asr_vad_min_silence_ms=int(os.getenv("ASR_VAD_MIN_SILENCE_MS", "250")),
+            asr_target_segment_ms=int(os.getenv("ASR_TARGET_SEGMENT_MS", "5000")),
+            asr_cut_silence_ms=int(os.getenv("ASR_CUT_SILENCE_MS", "1000")),
+            asr_force_cut_silence_ms=int(os.getenv("ASR_FORCE_CUT_SILENCE_MS", "2500")),
+            asr_min_speech_ms=int(os.getenv("ASR_MIN_SPEECH_MS", "3000")),
+            asr_overlap_ms=int(os.getenv("ASR_OVERLAP_MS", "250")),
+            mancha_asr_url=os.getenv("MANCHA_ASR_URL", "").strip(),
+            mancha_asr_api_key=os.getenv("MANCHA_ASR_API_KEY", "").strip(),
+            mancha_asr_model=os.getenv("MANCHA_ASR_MODEL", "").strip(),
+            mancha_asr_language=os.getenv("MANCHA_ASR_LANGUAGE", "auto").strip() or "auto",
+            mancha_asr_timeout_s=_float(os.getenv("MANCHA_ASR_TIMEOUT", "15"), 15.0),
+            mancha_asr_retries=int(os.getenv("MANCHA_ASR_RETRIES", "2")),
         )

@@ -17,6 +17,8 @@ from playwright.sync_api import Error as PWError
 
 from app.browser.auth_manager import AuthManager
 from app.browser.chromium_manager import ChromiumManager
+from app.asr.session import session_from_settings
+from app.asr.subsystem import AsrSubsystem
 from app.capture import CaptureCoordinator
 from app.capture.audio import AudioSubsystem
 from app.config.settings import Settings
@@ -150,11 +152,19 @@ def run_session(config: WorkerConfig, settings: Settings,
             # A session-unique id keeps WAV/index/FFmpeg output apart. Note that
             # multiple loopback captures still record the same system output.
             coordinator = CaptureCoordinator(config.meeting_id)
-            coordinator.register(AudioSubsystem(settings, coordinator.session_id))
+            audio_sub = AudioSubsystem(settings, coordinator.session_id)
+            if settings.asr_enabled:
+                asr_session = session_from_settings(settings, coordinator.session_id)
+                asr_sub = AsrSubsystem(asr_session)
+                asr_sub.listen_to(audio_sub.engine)
+                coordinator.register(asr_sub)
+            coordinator.register(audio_sub)
             if not coordinator.start():
                 log.error("Audio capture did not start; continuing in the meeting without audio")
         else:
             log.info("Audio capture is disabled (AUDIO_ENABLED=false)")
+            if settings.asr_enabled:
+                log.warning("ASR_ENABLED=true but AUDIO_ENABLED=false; ASR will not run")
 
         end_state, reason = monitor_meeting(page, session, settings, is_alive)
         if stopped():
@@ -203,7 +213,7 @@ def run_session(config: WorkerConfig, settings: Settings,
                  f" ({session.reason})" if session.reason else "")
 
 
-_PATH_SETTINGS = {"audio_output_dir", "profiles_dir", "profile_source"}
+_PATH_SETTINGS = {"audio_output_dir", "asr_output_dir", "profiles_dir", "profile_source"}
 
 
 def settings_for_worker(config: WorkerConfig) -> Settings:

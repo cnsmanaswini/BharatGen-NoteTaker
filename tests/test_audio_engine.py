@@ -45,7 +45,7 @@ def test_synthetic_source_format():
     assert src.open() == (48000, 2)
     block = None
     for _ in range(5):
-        block = src.read(0.2)
+        block = src.read(0.1)  # 0.1 s @ 48 kHz = 4800 frames
         if block:
             break
     assert block is not None and len(block) == 4800 * 2 * 2

@@ -3,12 +3,14 @@ from app.main import MEET_URL_RE, parse_args
 
 
 def test_defaults(monkeypatch):
-    for k in ("BROWSER_CHANNEL", "HEADLESS", "BOT_DISPLAY_NAME"):
+    for k in ("BROWSER_CHANNEL", "HEADLESS", "BOT_DISPLAY_NAME", "ASR_ENABLED"):
         monkeypatch.delenv(k, raising=False)
     s = Settings.from_env()
     assert s.bot_display_name == "BharatGen Notetaker"
     assert s.headless is False
     assert s.browser_channel == "chrome"
+    assert s.asr_enabled is False
+    assert s.audio_enabled is False
 
 
 def test_env_override(monkeypatch):

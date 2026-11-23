@@ -8,7 +8,7 @@ __pycache__/
 .venv/
 .pytest_cache/
 diagnostics/
-audio/
+/audio/
 transcripts/
 *.wav
 !tests/**/*.wav
